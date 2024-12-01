@@ -7,33 +7,41 @@
 pragma solidity ^0.8.0;
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import "./PriceConverter.sol";
 
 contract FundMe {
+    
+    using PriceConverter for uint256;
 
     uint256 public minimunUSD = 50 * 1e18;
 
+    address[] public funders;
+    mapping (address => uint256) public addressToAmountFunded;
 
-    function fund() public payable {
-        // Want to be able to set a minimum dund amout
-        // 1. How do we send ETH to this contract?
-        // msg = checker, sees if the value is greater then is required;
-       require(getConversionRate(msg.value) >= minimunUSD, "Didn't send enough"); // 1e18 = 1 * 10 ** 18;
-       //Note: What is Reverting? = Undo any action before, and send remaining gas back.
+    function fund() public payable { 
+       require(msg.value.getConversionRate() >= minimunUSD,
+        "Didn't send enough"); 
+       funders.push(msg.sender);
+       addressToAmountFunded[msg.sender] = msg.value;
     }
 
-    function getPrice() public view returns(uint256){
-      // ABI 
-      // Address 0x694AA1769357215DE4FAC081bf1f309aDC325306
-      AggregatorV3Interface price = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);
-        (,int256 answer,,,) = price.latestRoundData();
-        return uint256(answer * 1e10);
-    }
+    function witdraw() public  {
+       for (uint256 funderIndex = 0 ; funderIndex <= funders.length; funderIndex++)  {
+        address funder = funders[funderIndex];
+        addressToAmountFunded[funder] = 0;
+       }
+       //reset Array
+       funders = new address[](0);
+       //actually withdraw the funds
 
-    function getConversionRate(uint256 ethAmount) public view returns (uint256) {
-      uint256 ethPrice = getPrice();
-      uint256 ethAmountInUSD = (ethPrice * ethAmount) / 1e18;
-      return ethAmountInUSD;
-    }
+       // transfer
+       payable (msg.sender).transfer(address(this).balance); // with transfer if not true will revert
 
-  //  function witdraw() external {}
+       //send
+      bool sendSuccesseful = payable (msg.sender).send(address(this).balance); // with send if not true will view as a bool value to see if the condition is true or false (more user manualy)
+      require(sendSuccesseful, "Send failed");
+       //call
+       (bool callSuccess, ) = payable (msg.sender).call{value: address(this).balance}("");// we can call a function
+       require(callSuccess,"Call failed");
+    }
 }
